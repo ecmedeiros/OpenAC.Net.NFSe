@@ -134,5 +134,8 @@ public enum NFSeProvider : sbyte
 
     Sigep = 45,
 
-    Infisc = 47,
+    Infisc = 48,
+    
+    [Description("ISS Integra - Nobe Sistemas")]
+    ISSIntegra = 47
 }
