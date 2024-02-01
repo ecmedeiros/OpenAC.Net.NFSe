@@ -148,6 +148,8 @@ public sealed class NotaServico : GenericClone<NotaServico>, INotifyPropertyChan
 
     public DateTime Competencia { get; set; }
 
+    public DateTime DhTrans { get; set; }
+
     public string OutrasInformacoes { get; set; }
 
     public string DiscriminacaoImpostos { get; set; }

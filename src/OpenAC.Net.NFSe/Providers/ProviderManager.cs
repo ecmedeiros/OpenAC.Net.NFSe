@@ -98,6 +98,8 @@ public static class ProviderManager
             {NFSeProvider.Tiplan, new Dictionary<VersaoNFSe, Type> {{VersaoNFSe.ve203, typeof(ProviderTiplan203)}}},
             {NFSeProvider.WebIss, new Dictionary<VersaoNFSe, Type> {{VersaoNFSe.ve100, typeof(ProviderWebIss)}, {VersaoNFSe.ve202, typeof(ProviderWebIss2)}}},
             {NFSeProvider.Sigep, new Dictionary<VersaoNFSe, Type> {{VersaoNFSe.ve100, typeof(ProviderSigep) }, {VersaoNFSe.ve202, typeof(ProviderSigep) }}},
+            {NFSeProvider.Infisc, new Dictionary<VersaoNFSe, Type> {{VersaoNFSe.ve100, typeof(ProviderInfisc) }, {VersaoNFSe.ve202, typeof(ProviderInfisc) }}},
+
         };
 
         Load();

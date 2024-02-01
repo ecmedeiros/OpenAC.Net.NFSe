@@ -132,5 +132,7 @@ public enum NFSeProvider : sbyte
 
     Thema = 41,
 
-    Sigep = 45
+    Sigep = 45,
+
+    Infisc = 47,
 }
