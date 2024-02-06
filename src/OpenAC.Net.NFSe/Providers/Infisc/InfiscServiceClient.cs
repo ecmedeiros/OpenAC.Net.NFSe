@@ -6,7 +6,7 @@
 // Last Modified By : Dheizon Gonçalves
 // Last Modified On : 29-05-2023
 // ***********************************************************************
-// <copyright file="ISSCuritibaServiceClient.cs" company="OpenAC .Net">
+// <copyright file="InfiscServiceClient.cs" company="OpenAC .Net">
 //		        		   The MIT License (MIT)
 //	     		    Copyright (c) 2014 - 2023 Projeto OpenAC .Net
 //
@@ -30,8 +30,12 @@
 // ***********************************************************************
 
 using System;
+using System.Linq;
+using System.Net.Http.Headers;
+using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using System.ServiceModel;
+using System.Text;
 using System.Xml.Linq;
 using OpenAC.Net.Core.Extensions;
 using OpenAC.Net.DFe.Core;
@@ -91,7 +95,7 @@ internal sealed class InfiscServiceClient : NFSeSoapServiceClient, IServiceClien
 
     public string Enviar(string cabec, string msg)
     {
-        return Execute("https://www.e-governeapps2.com.br/RecepcionarLoteRps", msg.ToString(), "RecepcionarLoteRpsResponse");
+        return Execute("https://campobom-gif4homol.infisc.com.br/services/nfse/ws/Servicos.wsdl", msg.ToString(), "enviarLoteNotas");
     }
 
     public string EnviarSincrono(string cabec, string msg)
@@ -103,6 +107,72 @@ internal sealed class InfiscServiceClient : NFSeSoapServiceClient, IServiceClien
     {
         throw new NotImplementedException();
     }
+
+    //protected override string Execute(string soapAction, string message, string soapHeader, string[] responseTag, params string[] soapNamespaces)
+    //{
+    //    var envelope = new StringBuilder();
+    //    switch (MessageVersion)
+    //    {
+    //        case SoapVersion.Soap11:
+    //            envelope.Append("<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" ");
+    //            break;
+
+    //        case SoapVersion.Soap12:
+    //            envelope.Append("<soapenv:Envelope xmlns:soapenv=\"http://www.w3.org/2003/05/soap-envelope\" ");
+    //            break;
+
+    //        default:
+    //            throw new ArgumentOutOfRangeException();
+    //    }
+
+    //    envelope.Append("xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" ");
+    //    envelope.Append("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">");
+    //    envelope.Append("<soapenv:Body>");
+    //    envelope.Append($"<ns1:{responseTag[0]} xmlns:ns1=\"http://ws.pc.gif.com.br/\">");
+    //    envelope.Append("<xml xsi:type=\"xsd:string\">");
+    //    envelope.Append(message);
+    //    envelope.Append("</xml>");
+    //    envelope.Append("</ns1:");
+    //    envelope.Append(responseTag[0]);
+    //    envelope.Append(">");
+    //    envelope.Append("</soapenv:Body>");
+    //    envelope.Append("</soapenv:Envelope>");
+    //    EnvelopeEnvio = envelope.ToString();
+
+    //StringContent content;
+    //    switch (MessageVersion)
+    //    {
+    //        case SoapVersion.Soap11:
+    //            content = new StringContent(EnvelopeEnvio, CharSet, "text/xml");
+    //            if (Provider.Name != NFSeProvider.Infisc.ToString())
+    //                content.Headers.Add("SOAPAction", $"\"{soapAction}\"");
+    //            break;
+
+    //        case SoapVersion.Soap12:
+    //            content = new StringContent(EnvelopeEnvio, CharSet, "application/soap+xml");
+    //            content.Headers.ContentType?.Parameters.Add(new NameValueHeaderValue("action", $"\"{soapAction}\""));
+    //            break;
+
+    //        default:
+    //            throw new ArgumentOutOfRangeException();
+    //    }
+
+    //    Execute(content, HttpMethod.Post);
+
+    //   if (!EnvelopeRetorno.IsValidXml())
+    //        throw new OpenDFeCommunicationException("Erro ao processar o xml do envelope SOAP => " + EnvelopeRetorno);
+
+    //    var xmlDocument = XDocument.Parse(EnvelopeRetorno);
+    //    var body = xmlDocument.ElementAnyNs("Envelope").ElementAnyNs("Body");
+    //    var retorno = TratarRetorno(body, responseTag);
+    //    if (retorno.IsValidXml()) return retorno;
+
+    //    if (retorno != null)
+    //        throw new OpenDFeCommunicationException("Erro ao processar o retorno(1) => " + retorno);
+
+    //    throw new OpenDFeCommunicationException("Erro ao processar o retorno(2) => " + EnvelopeRetorno);
+    //}
+
 
     private string Execute(string action, string message, string responseTag)
     {

@@ -12,6 +12,7 @@
 			<UrlHomologacao>
 				<Item>
 					<TipoUrl>Enviar</TipoUrl>
+					<Url>https://campobom-gif4homol.infisc.com.br/services/nfse/ws/Servicos.wsdl</Url>
 				</Item>
 				<Item>
 					<TipoUrl>EnviarSincrono</TipoUrl>

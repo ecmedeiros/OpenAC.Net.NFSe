@@ -31,6 +31,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -45,7 +46,13 @@ using OpenAC.Net.NFSe.Nota;
 namespace OpenAC.Net.NFSe.Providers;
 
 internal sealed class ProviderInfisc : ProviderBase
+    
 {
+    protected override bool PrecisaValidarSchema(TipoUrl tipo)
+    {
+        return false;
+    }
+
     #region Constructors
 
     public ProviderInfisc(ConfigNFSe config, OpenMunicipioNFSe municipio) : base(config, municipio)
@@ -371,17 +378,17 @@ internal sealed class ProviderInfisc : ProviderBase
 
     private XElement WriteRps(NotaServico nota)
     {
-        var rps = new XElement("Rps");
+        var rps = new XElement("NFS-e");
         var infoRps = WriteInfoRPS(nota);
         rps.Add(infoRps);
 
-        infoRps.AddChild(WriteRpsSubstituto(nota));
-        infoRps.AddChild(WriteServicosValoresRps(nota));
         infoRps.AddChild(WritePrestadorRps(nota));
         infoRps.AddChild(WriteTomadorRps(nota));
+        //infoRps.AddChild(WriteRpsSubstituto(nota));
+        infoRps.AddChild(WriteServicosRps(nota));
         infoRps.AddChild(WriteIntermediarioRps(nota));
         infoRps.AddChild(WriteConstrucaoCivilRps(nota));
-
+        //rps.AddChild(WriteSignature(nota.Signature));
         return rps;
     }
 
@@ -405,17 +412,151 @@ internal sealed class ProviderInfisc : ProviderBase
 
         var situacao = nota.Situacao == SituacaoNFSeRps.Normal ? "1" : "2";
 
-        var infoRps = new XElement("InfRps");
+        string CpfCnpjPrestador = nota.Prestador.CpfCnpj;
+        int modeloNota = 90;
+        int serieNota = 000;
+        string cnfse = new Random().Next(100000000, 1000000000).ToString();
 
-        infoRps.Add(WriteIdentificacao(nota));
-        infoRps.AddChild(AdicionarTag(TipoCampo.DatHor, "", "DataEmissao", 20, 20, Ocorrencia.Obrigatoria, nota.IdentificacaoRps.DataEmissao));
-        infoRps.AddChild(AdicionarTag(TipoCampo.Int, "", "NaturezaOperacao", 1, 1, Ocorrencia.Obrigatoria, nota.NaturezaOperacao));
-        infoRps.AddChild(AdicionarTag(TipoCampo.Int, "", "RegimeEspecialTributacao", 1, 1, Ocorrencia.NaoObrigatoria, regimeEspecialTributacao));
-        infoRps.AddChild(AdicionarTag(TipoCampo.Int, "", "OptanteSimplesNacional", 1, 1, Ocorrencia.Obrigatoria, optanteSimplesNacional));
-        infoRps.AddChild(AdicionarTag(TipoCampo.Int, "", "IncentivadorCultural", 1, 1, Ocorrencia.Obrigatoria, incentivadorCultural));
-        infoRps.AddChild(AdicionarTag(TipoCampo.Int, "", "Status", 1, 1, Ocorrencia.Obrigatoria, situacao));
+        string chaveAcesso = ConstruirChaveAcesso(nota.Prestador.Endereco.CodigoMunicipio, CpfCnpjPrestador, modeloNota, serieNota, nota.IdentificacaoNFSe.Numero, cnfse);
+        nota.IdentificacaoNFSe.Chave = chaveAcesso;
+
+        var infoRps = new XElement("InfNfse", new XAttribute("versao", 1.1));
+
+        var idRps = new XElement("Id");
+        infoRps.AddChild(idRps);
+
+        idRps.AddChild(AdicionarTag(TipoCampo.Int, "", "cNFS-e", 1, 9, Ocorrencia.Obrigatoria, cnfse));
+        idRps.AddChild(AdicionarTag(TipoCampo.Int, "", "mod", 1, 2, Ocorrencia.Obrigatoria, modeloNota));
+        idRps.AddChild(AdicionarTag(TipoCampo.Str, "", "serie", 1, 9, Ocorrencia.Obrigatoria, "S"));
+        idRps.AddChild(AdicionarTag(TipoCampo.Str, "", "nNFS-e", 1, 30, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Numero));
+        idRps.AddChild(AdicionarTag(TipoCampo.Dat, "", "dEmi", 1, 20, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.DataEmissao));
+        idRps.AddChild(AdicionarTag(TipoCampo.Hor, "", "hEmi", 1, 9, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.DataEmissao.TimeOfDay));
+        idRps.AddChild(AdicionarTag(TipoCampo.Int, "", "tpNF", 1, 1, Ocorrencia.Obrigatoria, 1));
+        idRps.AddChild(AdicionarTag(TipoCampo.Int, "", "refNF", 1, 39, Ocorrencia.Obrigatoria, chaveAcesso));
 
         return infoRps;
+    }
+
+    private XElement WriteServicosRps(NotaServico nota)
+    {
+        var detServ = new XElement("det");
+
+        detServ.AddChild(AdicionarTag(TipoCampo.Int, "", "nItem", 3, 3, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Numero));
+
+        var infoServ = new XElement("serv");
+        detServ.AddChild(infoServ);
+
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "cServ", 1, 60, Ocorrencia.Obrigatoria, nota.EnderecoPrestacao.CodigoMunicipio));
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "xServ", 1, 256, Ocorrencia.Obrigatoria, nota.Servico.Discriminacao));
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "uTrib", 1, 2, Ocorrencia.Obrigatoria, nota.Servico.Unidade));
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "qTrib", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Quantidade));
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "vUnit", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Valores.ValorServicos));
+        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "vServ", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Valores.ValorServicos));
+
+        return detServ;
+
+    }
+    private XElement WriteTotalValoresNFSe(NotaServico nota)
+    {
+        var total = new XElement("total");
+
+        decimal vServ = nota.Servico.Valores.ValorServicos * nota.Servico.Quantidade;
+
+        total.AddChild(AdicionarTag(TipoCampo.Int, "", "vServ", 1, 15, Ocorrencia.Obrigatoria, vServ));
+
+        total.AddChild(AdicionarTag(TipoCampo.De2, "", "vtNF", 1, 15, Ocorrencia.MaiorQueZero, vServ));
+
+        total.AddChild(AdicionarTag(TipoCampo.De2, "", "vtLiq", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorLiquidoNfse));
+        total.AddChild(AdicionarTag(TipoCampo.De2, "", "ISS", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.AliquotaInss));
+
+        return total;
+    }
+
+    private XElement WritePrestadorRps(NotaServico nota)
+    {
+
+        var infPre = new XElement("pres");
+
+        infPre.AddChild(AdicionarTag(TipoCampo.Int, "", "CNPJ", 1, 15, Ocorrencia.Obrigatoria, nota.Prestador.CpfCnpj));
+        infPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xNome", 1, 150, Ocorrencia.Obrigatoria, nota.Prestador.RazaoSocial));
+        infPre.AddChild(AdicionarTag(TipoCampo.Int, "", "IM", 1, 15, Ocorrencia.Obrigatoria, nota.Prestador.InscricaoMunicipal));
+
+        var endPre = new XElement("end");
+
+        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xLgr", 1, 100, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Logradouro));
+        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "nro", 1, 6, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Numero));
+        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xCpl", 1, 100, Ocorrencia.NaoObrigatoria, nota.Prestador.Endereco.Complemento));
+        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xBairro", 1, 100, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Bairro));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "cMun", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.CodigoMunicipio));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "xMun", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Municipio));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "UF", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Uf));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "CEP", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Cep));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "cPais", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.CodigoPais));
+        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "xPais", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Pais));
+
+        //TODO ver se varia ou tem um padrao
+        infPre.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "regimeTrib", 1, 15, Ocorrencia.Obrigatoria, 1));
+
+        return infPre;
+    }
+
+    private XElement WriteTomadorRps(NotaServico nota)
+    {
+        var infTom = new XElement("TomS");
+
+        int length = new string(nota.Tomador.CpfCnpj.Where(char.IsDigit).ToArray()).Length;
+
+        if (length == 11)
+        {
+            infTom.AddChild(AdicionarTag(TipoCampo.DatHor, "", "CPF", 20, 20, Ocorrencia.Obrigatoria, nota.Tomador.CpfCnpj));
+        }
+        else
+        {
+            infTom.AddChild(AdicionarTag(TipoCampo.DatHor, "", "CNPJ", 20, 20, Ocorrencia.Obrigatoria, nota.Tomador.CpfCnpj));
+        }
+
+        if (!nota.Tomador.Endereco.Logradouro.IsEmpty() || !nota.Tomador.Endereco.Numero.IsEmpty() ||
+            !nota.Tomador.Endereco.Complemento.IsEmpty() || !nota.Tomador.Endereco.Bairro.IsEmpty() ||
+            nota.Tomador.Endereco.CodigoMunicipio > 0 || !nota.Tomador.Endereco.Uf.IsEmpty() ||
+            !nota.Tomador.Endereco.Cep.IsEmpty())
+        {
+            var endereco = new XElement("ender");
+            infTom.Add(endereco);
+
+            endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Endereco", 1, 125, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Logradouro));
+            endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Numero", 1, 10, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Numero));
+            endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Complemento", 1, 60, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Complemento));
+            endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Bairro", 1, 60, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Bairro));
+            endereco.AddChild(AdicionarTag(TipoCampo.Int, "", "CodigoMunicipio", 7, 7, Ocorrencia.MaiorQueZero, nota.Tomador.Endereco.CodigoMunicipio));
+            endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Uf", 2, 2, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Uf));
+            endereco.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "Cep", 8, 8, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Cep));
+        }
+
+        if (!nota.Tomador.DadosContato.DDD.IsEmpty() || !nota.Tomador.DadosContato.Telefone.IsEmpty() ||
+            !nota.Tomador.DadosContato.Email.IsEmpty())
+        {
+            var contato = new XElement("Contato");
+            infTom.Add(contato);
+
+            contato.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "Telefone", 1, 11, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.DDD + nota.Tomador.DadosContato.Telefone));
+            contato.AddChild(AdicionarTag(TipoCampo.Str, "", "Email", 1, 80, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.Email));
+        }
+
+        return infTom;
+    }
+
+    static string ConstruirChaveAcesso(int UF, string cpfCnpjPrestador, int modeloNota, int serieNota, string numeroNota, string codigoAleatorio)
+    {
+        // TODO: Puxar estes valores de nota
+        string cpfCnpjFormatado = cpfCnpjPrestador.PadLeft(14, '0'); // Preencher com zeros à esquerda se necessário
+        string modeloNotaFormatado = modeloNota.ToString().PadLeft(2, '0'); // Preencher com zeros à esquerda se necessário
+        string serieNotaFormatada = serieNota.ToString().PadLeft(3, '0'); // Preencher com zeros à esquerda se necessário
+        string numeroNotaFormatado = numeroNota.ToString().PadLeft(9, '0'); // Preencher com zeros à esquerda se necessário
+
+        // Concatenar os valores para formar a chave de acesso
+        string chaveAcesso = $"{UF}{cpfCnpjFormatado}{modeloNotaFormatado}{serieNotaFormatada}{numeroNotaFormatado}{codigoAleatorio}";
+
+        return chaveAcesso;
     }
 
     private XElement WriteIdentificacao(NotaServico nota)
@@ -520,74 +661,6 @@ internal sealed class ProviderInfisc : ProviderBase
         return servico;
     }
 
-    private XElement WritePrestadorRps(NotaServico nota)
-    {
-        var prestador = new XElement("Prestador");
-
-        //var cpfCnpjPrestador = new XElement("CpfCnpj");
-        //prestador.Add(cpfCnpjPrestador);
-
-        //cpfCnpjPrestador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", nota.Prestador.CpfCnpj));
-
-        prestador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", nota.Prestador.CpfCnpj));
-        prestador.AddChild(AdicionarTag(TipoCampo.Str, "", "InscricaoMunicipal", 1, 15, Ocorrencia.NaoObrigatoria, nota.Prestador.InscricaoMunicipal));
-
-        return prestador;
-    }
-
-    private XElement WriteTomadorRps(NotaServico nota)
-    {
-        var tomador = new XElement("Tomador");
-
-        var ideTomador = new XElement("IdentificacaoTomador");
-        tomador.Add(ideTomador);
-
-        var cpfCnpjTomador = new XElement("CpfCnpj");
-        ideTomador.Add(cpfCnpjTomador);
-
-        if (!string.IsNullOrEmpty(nota.Tomador.CpfCnpj)) // Existem NFS-e que é possível ser emitida sem tomador
-        {
-            cpfCnpjTomador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", nota.Tomador.CpfCnpj));
-
-            ideTomador.AddChild(AdicionarTag(TipoCampo.Str, "", "InscricaoMunicipal", 1, 15, Ocorrencia.NaoObrigatoria, nota.Tomador.InscricaoMunicipal));
-
-            tomador.AddChild(AdicionarTag(TipoCampo.Str, "", "RazaoSocial", 1, 115, Ocorrencia.NaoObrigatoria, nota.Tomador.RazaoSocial));
-
-            if (!nota.Tomador.Endereco.Logradouro.IsEmpty() || !nota.Tomador.Endereco.Numero.IsEmpty() ||
-                !nota.Tomador.Endereco.Complemento.IsEmpty() || !nota.Tomador.Endereco.Bairro.IsEmpty() ||
-                nota.Tomador.Endereco.CodigoMunicipio > 0 || !nota.Tomador.Endereco.Uf.IsEmpty() ||
-                !nota.Tomador.Endereco.Cep.IsEmpty())
-            {
-                var endereco = new XElement("Endereco");
-                tomador.Add(endereco);
-
-                endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Endereco", 1, 125, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Logradouro));
-                endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Numero", 1, 10, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Numero));
-                endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Complemento", 1, 60, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Complemento));
-                endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Bairro", 1, 60, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Bairro));
-                endereco.AddChild(AdicionarTag(TipoCampo.Int, "", "CodigoMunicipio", 7, 7, Ocorrencia.MaiorQueZero, nota.Tomador.Endereco.CodigoMunicipio));
-                endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Uf", 2, 2, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Uf));
-                endereco.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "Cep", 8, 8, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Cep));
-            }
-
-            if (!nota.Tomador.DadosContato.DDD.IsEmpty() || !nota.Tomador.DadosContato.Telefone.IsEmpty() ||
-                !nota.Tomador.DadosContato.Email.IsEmpty())
-            {
-                var contato = new XElement("Contato");
-                tomador.Add(contato);
-
-                contato.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "Telefone", 1, 11, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.DDD + nota.Tomador.DadosContato.Telefone));
-                contato.AddChild(AdicionarTag(TipoCampo.Str, "", "Email", 1, 80, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.Email));
-            }
-        }
-        else
-        {
-            cpfCnpjTomador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", "00000000000"));
-        }
-
-        return tomador;
-    }
-
     private XElement WriteIntermediarioRps(NotaServico nota)
     {
         if (nota.Intermediario.RazaoSocial.IsEmpty()) return null;
@@ -629,25 +702,11 @@ internal sealed class ProviderInfisc : ProviderBase
         var compNfse = new XElement("CompNfse");
 
         compNfse.AddChild(WriteNFSe(nota));
-        //compNfse.AddChild(WriteNFSeCancelamento(nota));
-        //compNfse.AddChild(WriteNFSeSubstituicao(nota));
+        compNfse.AddChild(WriteNFSeCancelamento(nota));
+        compNfse.AddChild(WriteNFSeSubstituicao(nota));
 
         xmlDoc.AddChild(compNfse);
         return xmlDoc.AsString(identado, showDeclaration);
-    }
-
-    static string ConstruirChaveAcesso(string UF, string cpfCnpjPrestador, int modeloNota, int serieNota, string numeroNota, string codigoAleatorio)
-    {
-        // TODO: Puxar estes valores de nota
-        string cpfCnpjFormatado = cpfCnpjPrestador.PadLeft(14, '0'); // Preencher com zeros à esquerda se necessário
-        string modeloNotaFormatado = modeloNota.ToString().PadLeft(2, '0'); // Preencher com zeros à esquerda se necessário
-        string serieNotaFormatada = serieNota.ToString().PadLeft(3, '0'); // Preencher com zeros à esquerda se necessário
-        string numeroNotaFormatado = numeroNota.ToString().PadLeft(9, '0'); // Preencher com zeros à esquerda se necessário
-
-        // Concatenar os valores para formar a chave de acesso
-        string chaveAcesso = $"{UF}{cpfCnpjFormatado}{modeloNotaFormatado}{serieNotaFormatada}{numeroNotaFormatado}{codigoAleatorio}";
-
-        return chaveAcesso;
     }
 
     private XElement WriteNFSe(NotaServico nota)
@@ -707,33 +766,42 @@ internal sealed class ProviderInfisc : ProviderBase
             optanteSimplesNacional = "2";
         }
 
-        // TODO: Puxar estes valores de nota
         var nfse = new XElement("Nfse");
-        string CpfCnpjPrestador = nota.Prestador.CpfCnpj;
-        int modeloNota = 90;
-        int serieNota = 000;
-        string cnfse = new Random().Next(100000000, 1000000000).ToString();
 
-        string chaveAcesso = ConstruirChaveAcesso(nota.Prestador.Endereco.Uf,CpfCnpjPrestador, modeloNota, serieNota, nota.IdentificacaoNFSe.Numero, cnfse);
-        nota.IdentificacaoNFSe.Chave = chaveAcesso;
-
-        int asd = nota.Servico.CodigoMunicipio;
-
-
-        var infNfse = new XElement("InfNfse", new XAttribute("versao", 1.1));
-
-        var idNfse = new XElement("Id");
-        infNfse.AddChild(idNfse);
-
+        var infNfse = new XElement("InfNfse", new XAttribute("Id", nota.IdentificacaoNFSe.Numero));
         nfse.Add(infNfse);
-        idNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "cNFS-e", 1, 9, Ocorrencia.Obrigatoria, cnfse));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "mod", 1, 2, Ocorrencia.Obrigatoria, modeloNota));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Str, "", "serie", 1, 9, Ocorrencia.Obrigatoria, "S"));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Str, "", "nNFS-e", 1, 30, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Numero));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Dat, "", "dEmi", 1, 20, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.DataEmissao));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Hor, "", "hEmi", 1, 9, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.DataEmissao.TimeOfDay));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "tpNF", 1, 1, Ocorrencia.Obrigatoria, 1));
-        idNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "refNF", 1, 39, Ocorrencia.Obrigatoria, chaveAcesso));
+
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "Numero", 1, 15, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Numero));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "CodigoVerificacao", 1, 15, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Chave));
+        infNfse.AddChild(AdicionarTag(TipoCampo.DatHor, "", "DataEmissao", 20, 20, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.DataEmissao));
+
+        var infRps = new XElement("IdentificacaoRps");
+        infNfse.Add(infRps);
+
+        infRps.AddChild(AdicionarTag(TipoCampo.Int, "", "Numero", 1, 15, Ocorrencia.Obrigatoria, nota.IdentificacaoRps.Numero));
+        infRps.AddChild(AdicionarTag(TipoCampo.Int, "", "Serie", 1, 5, Ocorrencia.Obrigatoria, nota.IdentificacaoRps.Serie));
+        infRps.AddChild(AdicionarTag(TipoCampo.Int, "", "Tipo", 1, 1, Ocorrencia.Obrigatoria, tipoRps));
+
+        infNfse.AddChild(AdicionarTag(TipoCampo.DatHor, "", "DataEmissaoRps", 20, 20, Ocorrencia.Obrigatoria, nota.IdentificacaoRps.DataEmissao));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "NaturezaOperacao", 1, 1, Ocorrencia.Obrigatoria, nota.NaturezaOperacao));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "RegimeEspecialTributacao", 1, 1, Ocorrencia.NaoObrigatoria, regimeEspecialTributacao));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "OptanteSimplesNacional", 1, 1, Ocorrencia.Obrigatoria, optanteSimplesNacional));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "IncentivadorCultural", 1, 1, Ocorrencia.Obrigatoria, incentivadorCultural));
+        infNfse.AddChild(AdicionarTag(TipoCampo.Dat, "", "Competencia", 10, 10, Ocorrencia.Obrigatoria, nota.Competencia));
+
+        if (!string.IsNullOrWhiteSpace(nota.RpsSubstituido.NumeroRps))
+        {
+            var rpsSubstituido = new XElement("RpsSubstituido");
+
+            rpsSubstituido.AddChild(AdicionarTag(TipoCampo.Int, "", "Numero", 1, 15, Ocorrencia.Obrigatoria, nota.RpsSubstituido.NumeroRps));
+            rpsSubstituido.AddChild(AdicionarTag(TipoCampo.Int, "", "Serie", 1, 5, Ocorrencia.Obrigatoria, nota.RpsSubstituido.Serie));
+            rpsSubstituido.AddChild(AdicionarTag(TipoCampo.Int, "", "Tipo", 1, 1, Ocorrencia.Obrigatoria, tipoRpsSubstituido));
+
+            infNfse.AddChild(rpsSubstituido);
+        }
+
+        var servico = WriteServicosValoresNFSe(nota);
+        infNfse.AddChild(servico);
 
         var prestador = WritePrestadorNFSe(nota);
         infNfse.AddChild(prestador);
@@ -741,14 +809,27 @@ internal sealed class ProviderInfisc : ProviderBase
         var tomador = WriteTomadorNFSe(nota);
         infNfse.AddChild(tomador);
 
-        var detalhesServ = WriteServicosNFSe(nota);
-        infNfse.AddChild(detalhesServ);
+        if (!nota.Intermediario.RazaoSocial.IsEmpty())
+        {
+            var intServico = WriteIntermediarioNFSe(nota);
+            infNfse.AddChild(intServico);
+        }
 
-        var servico = WriteTotalValoresNFSe(nota);
-        infNfse.AddChild(servico);
+        if (!nota.ConstrucaoCivil.CodigoObra.IsEmpty())
+        {
+            var conCivil = WriteConstrucaoCivilNFSe(nota);
+            infNfse.AddChild(conCivil);
+        }
 
-        idNfse.AddChild(AdicionarTag(TipoCampo.Int, "", "infAdicLT", 1, 39, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.CodigoMunicipio));
-        
+        if (nota.OrgaoGerador.CodigoMunicipio != 0)
+        {
+            var orgGerador = new XElement("OrgaoGerador");
+            infNfse.AddChild(orgGerador);
+
+            orgGerador.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "CodigoMunicipio", 1, 7, Ocorrencia.NaoObrigatoria, nota.OrgaoGerador.CodigoMunicipio));
+            orgGerador.AddChild(AdicionarTag(TipoCampo.Str, "", "Uf", 2, 2, Ocorrencia.NaoObrigatoria, nota.OrgaoGerador.Uf));
+        }
+
         nfse.AddChild(WriteSignature(nota.Signature));
 
         return nfse;
@@ -802,90 +883,66 @@ internal sealed class ProviderInfisc : ProviderBase
         return substituidora;
     }
 
-    private XElement WriteServicosNFSe(NotaServico nota)
+    private XElement WriteServicosValoresNFSe(NotaServico nota)
     {
-        var detServ = new XElement("det");
+        var servico = new XElement("Servico");
+        var valores = new XElement("Valores");
+        servico.AddChild(valores);
 
-        detServ.AddChild(AdicionarTag(TipoCampo.Int, "", "nItem", 3, 3, Ocorrencia.Obrigatoria, nota.IdentificacaoNFSe.Numero));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorServicos", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Valores.ValorServicos));
 
-        var infoServ = new XElement("serv");
-        detServ.AddChild(infoServ);
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorDeducoes", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorDeducoes));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorPis", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorPis));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorCofins", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorCofins));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorInss", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorInss));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorIr", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorIr));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorCsll", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorCsll));
 
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "cServ", 1, 60, Ocorrencia.Obrigatoria, nota.EnderecoPrestacao.CodigoMunicipio)) ;
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "xServ", 1, 256, Ocorrencia.Obrigatoria, nota.Servico.Discriminacao));
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "uTrib", 1, 2, Ocorrencia.Obrigatoria, nota.Servico.Unidade));
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "qTrib", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Quantidade));
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "vUnit", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Valores.ValorServicos));
-        infoServ.AddChild(AdicionarTag(TipoCampo.Int, "", "vServ", 1, 15, Ocorrencia.Obrigatoria, nota.Servico.Valores.ValorServicos));
+        valores.AddChild(AdicionarTag(TipoCampo.Int, "", "IssRetido", 1, 1, Ocorrencia.Obrigatoria, nota.Servico.Valores.IssRetido == SituacaoTributaria.Retencao ? 1 : 2));
 
-        return detServ;
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorIss", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorIss));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorIssRetido", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorIssRetido));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "OutrasRetencoes", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.OutrasRetencoes));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "BaseCalculo", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.BaseCalculo));
+        valores.AddChild(AdicionarTag(TipoCampo.De4, "", "Aliquota", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.Aliquota / 100)); // Valor Percentual - Exemplos: 1% => 0.01   /   25,5% => 0.255   /   100% => 1
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "ValorLiquidoNfse", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorLiquidoNfse));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "DescontoIncondicionado", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.DescontoIncondicionado));
+        valores.AddChild(AdicionarTag(TipoCampo.De2, "", "DescontoCondicionado", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.DescontoCondicionado));
 
-    }
-    private XElement WriteTotalValoresNFSe(NotaServico nota)
-    {
-        var total = new XElement("total");
+        servico.AddChild(AdicionarTag(TipoCampo.Str, "", "ItemListaServico", 1, 5, Ocorrencia.Obrigatoria, nota.Servico.ItemListaServico));
 
-        decimal vServ = nota.Servico.Valores.ValorServicos * nota.Servico.Quantidade;
+        servico.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "CodigoCnae", 1, 7, Ocorrencia.NaoObrigatoria, nota.Servico.CodigoCnae));
 
-        total.AddChild(AdicionarTag(TipoCampo.Int, "", "vServ", 1, 15, Ocorrencia.Obrigatoria, vServ));
+        servico.AddChild(AdicionarTag(TipoCampo.Str, "", "CodigoTributacaoMunicipio", 1, 20, Ocorrencia.NaoObrigatoria, nota.Servico.CodigoTributacaoMunicipio));
+        servico.AddChild(AdicionarTag(TipoCampo.Str, "", "Discriminacao", 1, 2000, Ocorrencia.Obrigatoria, nota.Servico.Discriminacao));
+        servico.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "CodigoMunicipio", 1, 7, Ocorrencia.Obrigatoria, nota.Servico.CodigoMunicipio));
 
-        total.AddChild(AdicionarTag(TipoCampo.De2, "", "vtNF", 1, 15, Ocorrencia.MaiorQueZero, vServ));
-
-        total.AddChild(AdicionarTag(TipoCampo.De2, "", "vtLiq", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.ValorLiquidoNfse));
-        total.AddChild(AdicionarTag(TipoCampo.De2, "", "ISS", 1, 15, Ocorrencia.MaiorQueZero, nota.Servico.Valores.AliquotaInss));
-
-        return total;
-    }
-
-    private XElement WritePrestadorNFSe(NotaServico nota)
-    {
-        var infPre = new XElement("pres");
-
-        infPre.AddChild(AdicionarTag(TipoCampo.Int, "", "CNPJ", 1, 15, Ocorrencia.Obrigatoria, nota.Prestador.CpfCnpj));
-        infPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xNome", 1, 150, Ocorrencia.Obrigatoria, nota.Prestador.RazaoSocial));
-        infPre.AddChild(AdicionarTag(TipoCampo.Int, "", "IM", 1, 15, Ocorrencia.Obrigatoria, nota.Prestador.InscricaoMunicipal));
-
-        var endPre = new XElement("end");
-
-        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xLgr", 1, 100, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Logradouro));
-        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "nro", 1, 6, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Numero));
-        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xCpl", 1, 100, Ocorrencia.NaoObrigatoria, nota.Prestador.Endereco.Complemento));
-        endPre.AddChild(AdicionarTag(TipoCampo.Str, "", "xBairro", 1, 100, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Bairro));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "cMun", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.CodigoMunicipio));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "xMun", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Municipio));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "UF", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Uf));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "CEP", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Cep));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "cPais", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.CodigoPais));
-        endPre.AddChild(AdicionarTag(TipoCampo.Int, "", "xPais", 1, 10, Ocorrencia.Obrigatoria, nota.Prestador.Endereco.Pais));
-
-        //TODO ver se varia ou tem um padrao
-        infPre.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "regimeTrib", 1, 15, Ocorrencia.Obrigatoria, 1));
-
-        return infPre;
+        return servico;
     }
 
     private XElement WriteTomadorNFSe(NotaServico nota)
     {
-        var infTom = new XElement("TomS");
+        var tomador = new XElement("Tomador");
 
-        int length = new string(nota.Tomador.CpfCnpj.Where(char.IsDigit).ToArray()).Length;
+        var ideTomador = new XElement("IdentificacaoTomador");
+        tomador.Add(ideTomador);
 
-        if (length == 11)
-        {
-            infTom.AddChild(AdicionarTag(TipoCampo.DatHor, "", "CPF", 20, 20, Ocorrencia.Obrigatoria, nota.Tomador.CpfCnpj));
-        }
-        else
-        {
-            infTom.AddChild(AdicionarTag(TipoCampo.DatHor, "", "CNPJ", 20, 20, Ocorrencia.Obrigatoria, nota.Tomador.CpfCnpj));
-        }
+        var cpfCnpjTomador = new XElement("CpfCnpj");
+        ideTomador.Add(cpfCnpjTomador);
+
+        cpfCnpjTomador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", nota.Tomador.CpfCnpj));
+
+        ideTomador.AddChild(AdicionarTag(TipoCampo.Str, "", "InscricaoMunicipal", 1, 15, Ocorrencia.NaoObrigatoria, nota.Tomador.InscricaoMunicipal));
+
+        tomador.AddChild(AdicionarTag(TipoCampo.Str, "", "RazaoSocial", 1, 115, Ocorrencia.NaoObrigatoria, nota.Tomador.RazaoSocial));
 
         if (!nota.Tomador.Endereco.Logradouro.IsEmpty() || !nota.Tomador.Endereco.Numero.IsEmpty() ||
             !nota.Tomador.Endereco.Complemento.IsEmpty() || !nota.Tomador.Endereco.Bairro.IsEmpty() ||
             nota.Tomador.Endereco.CodigoMunicipio > 0 || !nota.Tomador.Endereco.Uf.IsEmpty() ||
             !nota.Tomador.Endereco.Cep.IsEmpty())
         {
-            var endereco = new XElement("ender");
-            infTom.Add(endereco);
+            var endereco = new XElement("Endereco");
+            tomador.Add(endereco);
 
             endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Endereco", 1, 125, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Logradouro));
             endereco.AddChild(AdicionarTag(TipoCampo.Str, "", "Numero", 1, 10, Ocorrencia.NaoObrigatoria, nota.Tomador.Endereco.Numero));
@@ -900,13 +957,27 @@ internal sealed class ProviderInfisc : ProviderBase
             !nota.Tomador.DadosContato.Email.IsEmpty())
         {
             var contato = new XElement("Contato");
-            infTom.Add(contato);
+            tomador.Add(contato);
 
             contato.AddChild(AdicionarTag(TipoCampo.StrNumber, "", "Telefone", 1, 11, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.DDD + nota.Tomador.DadosContato.Telefone));
             contato.AddChild(AdicionarTag(TipoCampo.Str, "", "Email", 1, 80, Ocorrencia.NaoObrigatoria, nota.Tomador.DadosContato.Email));
         }
 
-        return infTom;
+        return tomador;
+    }
+
+    private XElement WritePrestadorNFSe(NotaServico nota)
+    {
+        var prestador = new XElement("Prestador");
+
+        var cpfCnpjPrestador = new XElement("CpfCnpj");
+        prestador.Add(cpfCnpjPrestador);
+
+        cpfCnpjPrestador.AddChild(AdicionarTagCNPJCPF("", "Cpf", "Cnpj", nota.Prestador.CpfCnpj));
+
+        prestador.AddChild(AdicionarTag(TipoCampo.Str, "", "InscricaoMunicipal", 1, 15, Ocorrencia.NaoObrigatoria, nota.Prestador.InscricaoMunicipal));
+
+        return prestador;
     }
 
     private XElement WriteIntermediarioNFSe(NotaServico nota)
@@ -950,27 +1021,23 @@ internal sealed class ProviderInfisc : ProviderBase
         if (notas.Count == 0) retornoWebservice.Erros.Add(new Evento { Codigo = "0", Descricao = "RPS não informado." });
         if (retornoWebservice.Erros.Count > 0) return;
 
-        var xmlLoteNfse = new StringBuilder();
+        var xmlLoteRps = new StringBuilder();
         DateTime currentDate = DateTime.Now;
 
         foreach (var nota in notas)
         {
-            var xmlNfse = WriteXmlNFSe(nota, false, false);
-            xmlLoteNfse.Append(xmlNfse);
-
-            //GravarRpsEmDisco(xmlNfse, $"Rps-{nota.IdentificacaoRps.DataEmissao:yyyyMMdd}-{nota.IdentificacaoRps.Numero}.xml", nota.IdentificacaoRps.DataEmissao);
+            var xmlRps = WriteXmlRps(nota, false, false);
+            xmlLoteRps.Append(xmlRps);
+            GravarRpsEmDisco(xmlRps, $"Rps-{nota.IdentificacaoRps.DataEmissao:yyyyMMdd}-{nota.IdentificacaoRps.Numero}.xml", nota.IdentificacaoRps.DataEmissao);
         }
 
-
         var xmlLote = new StringBuilder();
-
         xmlLote.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-        xmlLote.Append("<EnvioLote versao=\"1.0\">");
-        xmlLote.Append($"<NumeroLote>{retornoWebservice.Lote}</NumeroLote>");
+        xmlLote.Append("<EnvioLote versao=\"1.0\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">");
         xmlLote.Append($"<Cnpj>{Configuracoes.PrestadorPadrao.CpfCnpj.ZeroFill(14)}</Cnpj>");
         xmlLote.Append($"<dhTrans>{currentDate:yyyy-MM-ddTHH:mm:ss}</dhTrans>");
         xmlLote.Append("<NFS-e>");
-        xmlLote.Append(xmlLoteNfse);
+        xmlLote.Append(xmlLoteRps);
         xmlLote.Append("</NFS-e>");
         xmlLote.Append("</EnvioLote>");
 
@@ -981,7 +1048,34 @@ internal sealed class ProviderInfisc : ProviderBase
 
     protected override void AssinarEnviar(RetornoEnviar retornoWebservice)
     {
-        retornoWebservice.XmlEnvio = XmlSigning.AssinarXml(retornoWebservice.XmlEnvio, "EnviarLoteRpsEnvio", "", Certificado);
+        retornoWebservice.XmlEnvio = XmlSigning.AssinarXml(retornoWebservice.XmlEnvio, "EnvioLote", "", Certificado);
+
+        //retornoWebservice.XmlEnvio = AdicionarTagAssinatura(retornoWebservice.XmlEnvio);
+    }
+
+    private string AdicionarTagAssinatura(string xmlAssinado)
+    {
+        XmlDocument xmlDoc = new XmlDocument();
+        xmlDoc.LoadXml(xmlAssinado);
+
+        // Encontrar a tag desejada
+        XmlNode signatureNode = xmlDoc.SelectSingleNode("/EnvioLote");
+
+        if (signatureNode != null)
+        {
+            // Criar uma nova tag <ds:Signature>
+            XmlElement newSignatureElement = xmlDoc.CreateElement("ds", "Signature", "http://www.w3.org/2000/09/xmldsig#");
+
+            // Copiar o conteúdo da tag original para a nova tag
+            newSignatureElement.InnerXml = signatureNode.InnerXml;
+
+            // Substituir a tag original pela nova tag
+            signatureNode.ParentNode.ReplaceChild(newSignatureElement, signatureNode);
+
+            // Exibir o XML modificado
+            return xmlDoc.OuterXml;
+        }
+        return null;
     }
 
     protected override void PrepararEnviarSincrono(RetornoEnviar retornoWebservice, NotaServicoCollection notas)
@@ -1116,7 +1210,7 @@ internal sealed class ProviderInfisc : ProviderBase
 
         var loteBuilder = new StringBuilder();
         loteBuilder.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-        loteBuilder.Append("<CancelarNfse xmlns=\"https://www.e-canceladogoverneapps2.com.br/\">");
+        loteBuilder.Append("<CancelarNfse xmlns=\"https://www.e-governeapps2.com.br/\">");
         loteBuilder.Append("<CancelarNfseEnvio>");
         loteBuilder.Append("<Pedido>");
         loteBuilder.Append("<InfPedidoCancelamento>");

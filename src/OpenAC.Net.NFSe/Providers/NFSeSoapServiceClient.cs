@@ -110,6 +110,7 @@ public abstract class NFSeSoapServiceClient : NFSeHttpServiceClient
         return Execute(soapAction, message, soapHeader, new[] { responseTag }, soapNamespaces);
     }
 
+
     protected virtual string Execute(string soapAction, string message, string soapHeader, string[] responseTag, params string[] soapNamespaces)
     {
         var envelope = new StringBuilder();
@@ -141,6 +142,7 @@ public abstract class NFSeSoapServiceClient : NFSeHttpServiceClient
             case SoapVersion.Soap11:
                 content = new StringContent(EnvelopeEnvio, CharSet, "text/xml");
                 if (Provider.Name != NFSeProvider.Sigep.ToString())
+
                     content.Headers.Add("SOAPAction", $"\"{soapAction}\"");
                 break;
 
